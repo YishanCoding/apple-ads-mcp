@@ -1,0 +1,13 @@
+node_modules/
+dist/
+.env
+*.pem
+
+# macOS
+.DS_Store
+
+# Project instructions (local to developer)
+CLAUDE.md
+
+# Claude Code project files
+.claude/
