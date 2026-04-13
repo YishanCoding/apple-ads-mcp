@@ -237,4 +237,96 @@ export function registerOptimizationTools(server: McpServer, client: AppleAdsCli
       }
     }
   );
+
+  server.registerTool(
+    "get_recommendations",
+    {
+      title: "Apple Ads Recommendations",
+      description: "Fetch Apple Ads optimization recommendations for the current org (budget / bid / keyword suggestions). Use in daily report B column 【苹果建议】section — evaluate each recommendation against your keyword strategy and bidding policy before acting. IMPORTANT: All recommendations must be dismissed daily via dismiss_recommendation, regardless of whether they are accepted or rejected — otherwise Apple Ads stops generating new recommendations.",
+      inputSchema: {},
+      annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: true },
+    },
+    async () => {
+      try {
+        const resp = await client.get<{ data: unknown[] }>("/recommendations");
+        const items = (resp.data as unknown[]) ?? [];
+        if (items.length === 0) {
+          return { content: [{ type: "text", text: "No recommendations available at this time." }] };
+        }
+
+        // Group by type
+        const byType: Record<string, unknown[]> = {};
+        for (const item of items as Record<string, unknown>[]) {
+          const type = (item["type"] as string) ?? "UNKNOWN";
+          if (!byType[type]) byType[type] = [];
+          byType[type].push(item);
+        }
+
+        const sections: string[] = [`Apple Ads Recommendations (${items.length} total):\n`];
+        for (const [type, recs] of Object.entries(byType)) {
+          sections.push(`=== ${type} (${recs.length}) ===`);
+          for (const rec of recs as Record<string, unknown>[]) {
+            const entity = (rec["entity"] as Record<string, unknown>) ?? {};
+            const r = (rec["recommendation"] as Record<string, unknown>) ?? {};
+            sections.push(`• ${(entity["entityType"] as string) ?? "?"} ID=${entity["entityId"] ?? "?"}`);
+            if (type === "BUDGET_RECOMMENDATIONS") {
+              const cur = (r["currentBudget"] as Record<string, string>)?.["amount"] ?? (r["currentDailyBudget"] as Record<string, string>)?.["amount"] ?? "?";
+              const sug = (r["newBudget"] as Record<string, string>)?.["amount"] ?? (r["suggestedDailyBudget"] as Record<string, string>)?.["amount"] ?? "?";
+              sections.push(`  Current budget: $${cur} → Suggested: $${sug}`);
+              if (r["additionalInstalls"] != null)
+                sections.push(`  Expected: +${r["additionalInstalls"]} installs, +$${(r["additionalSpend"] as Record<string, string>)?.["amount"] ?? "?"} spend`);
+            } else if (type === "BID_RECOMMENDATIONS") {
+              const cur = (r["currentBid"] as Record<string, string>)?.["amount"] ?? "?";
+              const sug = (r["suggestedBid"] as Record<string, string>)?.["amount"] ?? "?";
+              const min = (r["bidMin"] as Record<string, string>)?.["amount"] ?? (r["suggestedBidMin"] as Record<string, string>)?.["amount"] ?? "?";
+              const max = (r["bidMax"] as Record<string, string>)?.["amount"] ?? (r["suggestedBidMax"] as Record<string, string>)?.["amount"] ?? "?";
+              sections.push(`  Current bid: $${cur} → Suggested: $${sug} (range $${min}–$${max})`);
+            } else if (type === "KEYWORD_RECOMMENDATIONS") {
+              const kws = ((r["keywords"] ?? r["recommendedKeywords"]) as unknown[]) ?? [];
+              if (kws.length > 0) {
+                const kwStr = (kws as Record<string, unknown>[]).slice(0, 10)
+                  .map((k) => `"${(k["text"] ?? k["keyword"] ?? k) as string}" ${(k["matchType"] as string) ?? ""} $${(k["bidAmount"] as Record<string, string>)?.["amount"] ?? (k["bid"] as string) ?? "?"}`)
+                  .join(", ");
+                sections.push(`  Suggested: ${kwStr}`);
+              }
+            } else {
+              sections.push(`  Raw: ${JSON.stringify(r)}`);
+            }
+          }
+          sections.push("");
+        }
+
+        return {
+          content: [
+            { type: "text", text: sections.join("\n") },
+            { type: "text", text: JSON.stringify(items, null, 2) },
+          ],
+        };
+      } catch (err) {
+        return handleToolError(err);
+      }
+    }
+  );
+
+  server.registerTool(
+    "dismiss_recommendation",
+    {
+      title: "Dismiss Apple Ads Recommendation",
+      description: "Dismiss an Apple Ads recommendation by ID so the system clears it and generates fresh recommendations. IMPORTANT: Must be called daily for each recommendation that is evaluated but not applied — otherwise Apple Ads stops generating new recommendations for your account. After evaluating via get_recommendations, call this for every recommendation (both accepted ones that were already actioned and rejected ones that don't fit your strategy).",
+      inputSchema: {
+        recommendationId: z.string().describe("The recommendation ID to dismiss (from get_recommendations output)"),
+      },
+      annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: true },
+    },
+    async ({ recommendationId }) => {
+      try {
+        await client.delete(`/recommendations/${recommendationId}`);
+        return {
+          content: [{ type: "text", text: `Recommendation ${recommendationId} dismissed successfully.` }],
+        };
+      } catch (err) {
+        return handleToolError(err);
+      }
+    }
+  );
 }
