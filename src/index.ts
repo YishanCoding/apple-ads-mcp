@@ -43,7 +43,7 @@ async function main() {
   registerAdGroupTools(server, client);
   registerKeywordTools(server, client);
   registerSearchTermTools(server, client);
-  registerOptimizationTools(server, client);
+  registerOptimizationTools(server, client, config);
   registerGeoTools(server, client);
   registerAppTools(server, client);
   registerBudgetOrderTools(server, client);

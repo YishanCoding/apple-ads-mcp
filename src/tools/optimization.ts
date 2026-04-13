@@ -8,8 +8,10 @@ import { buildSelector } from "../utils/selectors.js";
 import { formatCampaignSummary, formatMetrics, formatMoney } from "../utils/formatters.js";
 import { handleToolError } from "../utils/error-handler.js";
 import { validateDate } from "../utils/validators.js";
+import { getAccessToken } from "../auth/oauth.js";
+import type { Config } from "../config.js";
 
-export function registerOptimizationTools(server: McpServer, client: AppleAdsClient) {
+export function registerOptimizationTools(server: McpServer, client: AppleAdsClient, config?: Config) {
   server.registerTool(
     "get_campaign_snapshot",
     {
@@ -248,52 +250,110 @@ export function registerOptimizationTools(server: McpServer, client: AppleAdsCli
     },
     async () => {
       try {
-        const resp = await client.get<{ data: unknown[] }>("/recommendations");
-        const items = (resp.data as unknown[]) ?? [];
-        if (items.length === 0) {
-          return { content: [{ type: "text", text: "No recommendations available at this time." }] };
+        // Apple Ads keyword recommendations use the internal web UI API:
+        //   POST https://app-ads.apple.com/cm/api/v1/recommendation/keyword/find
+        // This endpoint uses cookie auth in the browser, but also accepts Bearer token.
+        // The public API (/api/v5/recommendations) does not expose keyword recommendations.
+        const orgId = client.getOrgId();
+        if (!orgId) {
+          return { content: [{ type: "text", text: "No organization selected. Use switch_organization first." }] };
         }
 
-        // Group by type
-        const byType: Record<string, unknown[]> = {};
-        for (const item of items as Record<string, unknown>[]) {
-          const type = (item["type"] as string) ?? "UNKNOWN";
-          if (!byType[type]) byType[type] = [];
-          byType[type].push(item);
+        // Get the adamId for this org's app. We need it for the recommendations query.
+        // Try fetching from the internal endpoint with Bearer token auth.
+        const token = config ? await getAccessToken(config) : null;
+
+        if (!token) {
+          return {
+            content: [{
+              type: "text",
+              text: "⚠️ Apple Ads keyword recommendations require Dia browser CDP access.\n\n" +
+                    "Run this command instead:\n" +
+                    "  python3 ~/.claude/skills/asa-daily-report-feishu/fetch_recommendations.py <adamId>\n\n" +
+                    "The recommendations API uses internal Apple Ads web session auth (not OAuth).\n" +
+                    "Requires Dia browser open at app-ads.apple.com on port 9222."
+            }]
+          };
         }
 
-        const sections: string[] = [`Apple Ads Recommendations (${items.length} total):\n`];
-        for (const [type, recs] of Object.entries(byType)) {
-          sections.push(`=== ${type} (${recs.length}) ===`);
-          for (const rec of recs as Record<string, unknown>[]) {
-            const entity = (rec["entity"] as Record<string, unknown>) ?? {};
-            const r = (rec["recommendation"] as Record<string, unknown>) ?? {};
-            sections.push(`• ${(entity["entityType"] as string) ?? "?"} ID=${entity["entityId"] ?? "?"}`);
-            if (type === "BUDGET_RECOMMENDATIONS") {
-              const cur = (r["currentBudget"] as Record<string, string>)?.["amount"] ?? (r["currentDailyBudget"] as Record<string, string>)?.["amount"] ?? "?";
-              const sug = (r["newBudget"] as Record<string, string>)?.["amount"] ?? (r["suggestedDailyBudget"] as Record<string, string>)?.["amount"] ?? "?";
-              sections.push(`  Current budget: $${cur} → Suggested: $${sug}`);
-              if (r["additionalInstalls"] != null)
-                sections.push(`  Expected: +${r["additionalInstalls"]} installs, +$${(r["additionalSpend"] as Record<string, string>)?.["amount"] ?? "?"} spend`);
-            } else if (type === "BID_RECOMMENDATIONS") {
-              const cur = (r["currentBid"] as Record<string, string>)?.["amount"] ?? "?";
-              const sug = (r["suggestedBid"] as Record<string, string>)?.["amount"] ?? "?";
-              const min = (r["bidMin"] as Record<string, string>)?.["amount"] ?? (r["suggestedBidMin"] as Record<string, string>)?.["amount"] ?? "?";
-              const max = (r["bidMax"] as Record<string, string>)?.["amount"] ?? (r["suggestedBidMax"] as Record<string, string>)?.["amount"] ?? "?";
-              sections.push(`  Current bid: $${cur} → Suggested: $${sug} (range $${min}–$${max})`);
-            } else if (type === "KEYWORD_RECOMMENDATIONS") {
-              const kws = ((r["keywords"] ?? r["recommendedKeywords"]) as unknown[]) ?? [];
-              if (kws.length > 0) {
-                const kwStr = (kws as Record<string, unknown>[]).slice(0, 10)
-                  .map((k) => `"${(k["text"] ?? k["keyword"] ?? k) as string}" ${(k["matchType"] as string) ?? ""} $${(k["bidAmount"] as Record<string, string>)?.["amount"] ?? (k["bid"] as string) ?? "?"}`)
-                  .join(", ");
-                sections.push(`  Suggested: ${kwStr}`);
-              }
-            } else {
-              sections.push(`  Raw: ${JSON.stringify(r)}`);
-            }
+        // Try the internal endpoint with Bearer token (Apple's auth is unified across services)
+        const requestBody = {
+          // adamId will be resolved below; use orgId as fallback
+          selector: {
+            conditions: [
+              { field: "state", operator: "EQUALS", values: ["AVAILABLE"] },
+              { field: "status", operator: "EQUALS", values: ["ENABLED"] },
+            ],
+            orderBy: [{ field: "expectedInstalls", sortOrder: "DESCENDING" }],
+            pagination: { limit: 250, offset: 0 },
+          },
+        };
+
+        // First get campaigns to find the adamId (app ID)
+        let adamId: string | undefined;
+        try {
+          const campaignsResp = await client.get<{ data: { adamId?: string | number }[] }>("/campaigns", { limit: "1" });
+          const firstCampaign = campaignsResp.data?.[0];
+          if (firstCampaign?.adamId) {
+            adamId = String(firstCampaign.adamId);
           }
-          sections.push("");
+        } catch {
+          // ignore, proceed without adamId
+        }
+
+        const body = adamId ? { ...requestBody, adamId } : requestBody;
+
+        const response = await fetch(
+          "https://app-ads.apple.com/cm/api/v1/recommendation/keyword/find",
+          {
+            method: "POST",
+            headers: {
+              "Authorization": `Bearer ${token}`,
+              "Content-Type": "application/json",
+              "Accept": "application/json",
+              "X-AP-Context": `orgId=${orgId}`,
+            },
+            body: JSON.stringify(body),
+          }
+        );
+
+        if (!response.ok) {
+          const errorText = await response.text().catch(() => "");
+          // Fall back to helpful error message
+          return {
+            content: [{
+              type: "text",
+              text: `⚠️ Keyword recommendations API returned ${response.status}.\n\n` +
+                    "Apple Ads keyword recommendations require browser session auth (cookie-based).\n" +
+                    "Use the CDP script instead:\n\n" +
+                    "  python3 ~/.claude/skills/asa-daily-report-feishu/fetch_recommendations.py " + (adamId ?? "<adamId>") + "\n\n" +
+                    "Requires Dia browser open at app-ads.apple.com on port 9222.\n" +
+                    `API error detail: ${errorText.substring(0, 200)}`,
+            }]
+          };
+        }
+
+        const data = await response.json() as { status: string; data: Record<string, unknown>[] };
+        const items = data.data ?? [];
+
+        if (items.length === 0) {
+          return { content: [{ type: "text", text: "No keyword recommendations available at this time." }] };
+        }
+
+        // Format output
+        const sections: string[] = [`Apple Ads Keyword Recommendations (${items.length} total, sorted by expected installs):\n`];
+        const top = items.slice(0, 30);
+        for (const rec of top) {
+          const kw = (rec["keyword"] as string) ?? "?";
+          const mt = (rec["matchType"] as string) ?? "?";
+          const bid = (rec["suggestedBidAmount"] as Record<string, string>)?.["amount"] ?? "?";
+          const installs = rec["expectedInstalls"] ?? 0;
+          const campaign = (rec["campaignName"] as string) ?? "?";
+          const recId = (rec["id"] as string) ?? "";
+          sections.push(`• [${mt}] "${kw}" bid=$${bid} ~${installs} installs (${campaign}) [id:${recId}]`);
+        }
+        if (items.length > 30) {
+          sections.push(`\n... and ${items.length - 30} more recommendations`);
         }
 
         return {
