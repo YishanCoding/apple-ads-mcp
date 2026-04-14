@@ -1,0 +1,45 @@
+{
+  "name": "apple-ads-mcp",
+  "version": "1.0.3",
+  "description": "MCP server for Apple Search Ads API v5",
+  "mcpName": "io.github.Happygallo/apple-ads",
+  "type": "module",
+  "main": "dist/index.js",
+  "bin": {
+    "apple-ads-mcp": "dist/index.js"
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc",
+    "start": "node dist/index.js",
+    "dev": "tsx src/index.ts",
+    "prepublishOnly": "npm run build"
+  },
+  "keywords": [
+    "mcp",
+    "apple-search-ads",
+    "apple-ads",
+    "model-context-protocol"
+  ],
+  "author": "Javier Gallo Roca",
+  "license": "MIT",
+  "engines": {
+    "node": ">=18"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Happygallo/apple-ads-mcp.git"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.12.1",
+    "jose": "^6.0.11",
+    "zod": "^3.24.4"
+  },
+  "devDependencies": {
+    "@types/node": "^22.15.3",
+    "tsx": "^4.19.4",
+    "typescript": "^5.8.3"
+  }
+}

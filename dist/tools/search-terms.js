@@ -1,0 +1,73 @@
+import { z } from "zod";
+import { buildSelector } from "../utils/selectors.js";
+import { formatMetrics } from "../utils/formatters.js";
+import { handleToolError } from "../utils/error-handler.js";
+import { validateDate } from "../utils/validators.js";
+export function registerSearchTermTools(server, client) {
+    server.registerTool("get_search_term_report", {
+        title: "Search Term Report",
+        description: "Get actual user search queries that triggered your ads, with full performance metrics. THIS IS THE MOST VALUABLE TOOL for keyword optimization — reveals which search terms convert well (add as keywords), which waste money (add as negatives), and which keywords trigger irrelevant searches.",
+        inputSchema: {
+            campaignId: z.number().describe("The campaign ID"),
+            startDate: z.string().describe("Start date (YYYY-MM-DD)"),
+            endDate: z.string().describe("End date (YYYY-MM-DD)"),
+            sortBy: z.string().optional().describe("Sort field: 'localSpend', 'impressions', 'installs', 'avgCPA' (default: localSpend)"),
+            limit: z.number().optional().describe("Max rows to return (default 100)"),
+            adGroupId: z.number().optional().describe("Filter to a specific ad group"),
+        },
+        annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: true },
+    }, async ({ campaignId, startDate, endDate, sortBy, limit, adGroupId }) => {
+        try {
+            validateDate(startDate, "startDate");
+            validateDate(endDate, "endDate");
+            const reportReq = {
+                startTime: startDate,
+                endTime: endDate,
+                selector: buildSelector({
+                    limit: limit ?? 100,
+                    sortBy: sortBy ?? "localSpend",
+                    sortOrder: "DESCENDING",
+                }),
+                returnRowTotals: true,
+            };
+            const path = adGroupId
+                ? `/reports/campaigns/${campaignId}/adgroups/${adGroupId}/searchterms`
+                : `/reports/campaigns/${campaignId}/searchterms`;
+            const resp = await client.post(path, reportReq);
+            const rows = resp.data.reportingDataResponse.row;
+            if (rows.length === 0) {
+                return { content: [{ type: "text", text: "No search term data found for the specified date range." }] };
+            }
+            const summaries = rows.map((row) => {
+                const meta = row.metadata;
+                return [
+                    `Search Term: "${meta.searchTermText ?? '(unknown)'}"`,
+                    `Matched Keyword: "${meta.keyword}" (${meta.matchType})`,
+                    `Source: ${meta.searchTermSource} | Ad Group: ${meta.adGroupName}`,
+                    formatMetrics(row.total),
+                ].join("\n");
+            });
+            const text = [
+                `Search Term Report (${startDate} to ${endDate}):`,
+                `Showing ${rows.length} search terms sorted by ${sortBy ?? "localSpend"}`,
+                "",
+                "💡 Analysis tips:",
+                "- High spend + low installs = consider adding as negative keyword",
+                "- High installs + low CPA = consider adding as exact match keyword with higher bid",
+                "- Search terms not matching your intent = add as negative keywords",
+                "",
+                ...summaries.map((s, i) => `--- Search Term ${i + 1} ---\n${s}`),
+            ].join("\n");
+            return {
+                content: [
+                    { type: "text", text },
+                    { type: "text", text: JSON.stringify(rows, null, 2) },
+                ],
+            };
+        }
+        catch (err) {
+            return handleToolError(err);
+        }
+    });
+}
+//# sourceMappingURL=search-terms.js.map
