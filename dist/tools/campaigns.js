@@ -190,9 +190,10 @@ Important: changing countriesOrRegions will clear existing geo targeting (ad-gro
             startDate: z.string().describe("Start date (YYYY-MM-DD)"),
             endDate: z.string().describe("End date (YYYY-MM-DD)"),
             granularity: z.enum(["HOURLY", "DAILY", "WEEKLY", "MONTHLY"]).optional().describe("Time granularity for trend data (default DAILY)"),
+            groupBy: z.array(z.enum(["ageRange", "gender", "deviceClass", "countryCode", "adminArea"])).optional().describe("Segment results by dimension(s): ageRange, gender, deviceClass (iPhone/iPad), countryCode, adminArea"),
         },
         annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: true },
-    }, async ({ campaignId, startDate, endDate, granularity }) => {
+    }, async ({ campaignId, startDate, endDate, granularity, groupBy }) => {
         try {
             validateDate(startDate, "startDate");
             validateDate(endDate, "endDate");
@@ -210,6 +211,7 @@ Important: changing countriesOrRegions will clear existing geo targeting (ad-gro
                 }),
                 returnRowTotals: true,
                 returnGrandTotals: true,
+                ...(groupBy?.length ? { groupBy } : {}),
             };
             const path = "/reports/campaigns";
             const resp = await client.post(path, reportReq);

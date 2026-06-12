@@ -208,9 +208,10 @@ Defaults: status=ENABLED, pricingModel=CPC, startTime=today. The defaultBidAmoun
             startDate: z.string().describe("Start date (YYYY-MM-DD)"),
             endDate: z.string().describe("End date (YYYY-MM-DD)"),
             granularity: z.enum(["HOURLY", "DAILY", "WEEKLY", "MONTHLY"]).optional().describe("Time granularity (default DAILY)"),
+            groupBy: z.array(z.enum(["ageRange", "gender", "deviceClass", "countryCode", "adminArea"])).optional().describe("Segment results by dimension(s): ageRange, gender, deviceClass (iPhone/iPad), countryCode, adminArea"),
         },
         annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: true },
-    }, async ({ campaignId, startDate, endDate, granularity }) => {
+    }, async ({ campaignId, startDate, endDate, granularity, groupBy }) => {
         try {
             validateDate(startDate, "startDate");
             validateDate(endDate, "endDate");
@@ -220,6 +221,7 @@ Defaults: status=ENABLED, pricingModel=CPC, startTime=today. The defaultBidAmoun
                 granularity: granularity ?? "DAILY",
                 selector: buildSelector({ limit: 1000, sortBy: "localSpend", sortOrder: "DESCENDING" }),
                 returnRowTotals: true,
+                ...(groupBy?.length ? { groupBy } : {}),
             };
             const resp = await client.post(`/reports/campaigns/${campaignId}/adgroups`, reportReq);
             const rows = resp.data.reportingDataResponse.row;

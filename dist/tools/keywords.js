@@ -12,11 +12,13 @@ export function registerKeywordTools(server, client) {
             adGroupId: z.number().optional().describe("Filter to a specific ad group"),
             startDate: z.string().describe("Start date (YYYY-MM-DD)"),
             endDate: z.string().describe("End date (YYYY-MM-DD)"),
+            granularity: z.enum(["HOURLY", "DAILY", "WEEKLY", "MONTHLY"]).optional().describe("Time granularity (default DAILY)"),
+            groupBy: z.array(z.enum(["ageRange", "gender", "deviceClass", "countryCode", "adminArea"])).optional().describe("Segment results by dimension(s): ageRange, gender, deviceClass (iPhone/iPad), countryCode, adminArea"),
             sortBy: z.string().optional().describe("Sort field: 'localSpend' (default), 'impressions', 'installs', 'avgCPA', 'taps'"),
             limit: z.number().optional().describe("Max rows (default 100)"),
         },
         annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: true },
-    }, async ({ campaignId, adGroupId, startDate, endDate, sortBy, limit }) => {
+    }, async ({ campaignId, adGroupId, startDate, endDate, granularity, groupBy, sortBy, limit }) => {
         try {
             validateDate(startDate, "startDate");
             validateDate(endDate, "endDate");
@@ -28,7 +30,9 @@ export function registerKeywordTools(server, client) {
                     sortBy: sortBy ?? "localSpend",
                     sortOrder: "DESCENDING",
                 }),
+                granularity: granularity ?? "DAILY",
                 returnRowTotals: true,
+                ...(groupBy?.length ? { groupBy } : {}),
             };
             const path = adGroupId
                 ? `/reports/campaigns/${campaignId}/adgroups/${adGroupId}/keywords`
