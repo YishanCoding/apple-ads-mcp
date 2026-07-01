@@ -30,7 +30,7 @@
 > *"Pause the brand campaign and increase the budget on discovery to $500."*
 > *"What search terms are triggering my ads? Add the best ones as exact-match keywords."*
 
-Supports 54 tools, 3 resources, and 6 prompts — campaigns, ad groups, keywords, creatives, budgets, search terms, geo targeting, impression share, and performance reports.
+Supports 59 tools, 3 resources, and 6 prompts — campaigns, ad groups, keywords, creatives, budgets, search terms, geo targeting, impression share, and performance reports.
 
 ### Features at a glance
 
@@ -283,14 +283,14 @@ Replace `ASA_PRIVATE_KEY_PATH` with `ASA_PRIVATE_KEY` and paste the PEM content 
 | **Keywords** | 11 | Add/remove targeting and negative keywords. Update bids. Keyword reports. |
 | **Search Terms** | 1 | See the actual queries people searched before tapping your ad. |
 | **Ads** | 7 | List, create, update, delete ads. Get ad reports and rejection reasons. |
-| **Creatives** | 5 | Manage creatives and product pages. |
+| **Creatives** | 8 | Manage creatives, product pages, locales, supported countries, and device sizes. |
 | **Budget Orders** | 4 | Create, update, list, and get budget order details. |
 | **Apps & Geo** | 5 | Search for eligible apps, check eligibility, find assets, search geolocations. |
 | **Geo Performance** | 1 | Performance breakdown by country/region. |
 | **Impression Share** | 3 | Create, list, and retrieve custom impression share reports. |
-| **Optimization** | 2 | Campaign snapshots and budget utilization analysis. |
+| **Optimization** | 4 | Campaign snapshots, budget utilization analysis, and Apple recommendation handling. |
 
-### All 54 tools
+### All 59 tools
 
 | Category | Tools |
 |---|---|
@@ -300,12 +300,12 @@ Replace `ASA_PRIVATE_KEY_PATH` with `ASA_PRIVATE_KEY` and paste the PEM content 
 | **Keywords** | `get_keyword_report`, `list_targeting_keywords`, `get_targeting_keyword`, `add_targeting_keywords`, `update_targeting_keywords`, `delete_targeting_keywords`, `list_negative_keywords`, `get_negative_keyword`, `add_negative_keywords`, `update_negative_keywords`, `delete_negative_keywords` |
 | **Search Terms** | `get_search_term_report` |
 | **Ads** | `list_ads`, `get_ad`, `create_ad`, `update_ad`, `delete_ad`, `get_ad_report`, `find_ad_rejection_reasons` |
-| **Creatives** | `list_creatives`, `get_creative`, `create_creative`, `list_product_pages`, `get_product_page_by_id` |
+| **Creatives** | `list_creatives`, `get_creative`, `create_creative`, `list_product_pages`, `get_product_page_by_id`, `get_product_page_locales`, `get_supported_countries_regions`, `get_app_preview_device_sizes` |
 | **Budget Orders** | `list_budget_orders`, `get_budget_order`, `create_budget_order`, `update_budget_order` |
 | **Apps & Geo** | `search_apps`, `get_app_details`, `get_app_eligibility`, `find_app_assets`, `search_geolocations` |
 | **Geo Performance** | `get_geo_performance` |
 | **Impression Share** | `create_impression_share_report`, `get_impression_share_report_by_id`, `list_impression_share_reports` |
-| **Optimization** | `get_campaign_snapshot`, `get_budget_analysis` |
+| **Optimization** | `get_campaign_snapshot`, `get_budget_analysis`, `get_recommendations`, `dismiss_recommendation` |
 
 ---
 

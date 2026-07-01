@@ -129,6 +129,40 @@ After creation, use create_ad to attach the creative to an ad group. Each ad gro
             return handleToolError(err);
         }
     });
+    server.registerTool("get_product_page_locales", {
+        title: "Get Product Page Locales",
+        description: "Fetch localized metadata for a product page by Adam ID and product page ID. Filter by device class or language code, and set expand=true to include locale-specific screenshots and app preview assets when Apple returns them.",
+        inputSchema: {
+            adamId: z.number().describe("App Adam ID"),
+            productPageId: z.string().describe("The product page ID"),
+            deviceClasses: z.array(z.enum(["IPAD", "IPHONE"])).optional().describe("Filter by device classes, e.g. ['IPHONE']"),
+            expand: z.boolean().optional().describe("Include expanded locale asset metadata"),
+            languageCodes: z.array(z.string()).optional().describe("Filter by ISO 639-1 language codes, e.g. ['en-US', 'zh-Hans']"),
+        },
+        annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: true },
+    }, async ({ adamId, productPageId, deviceClasses, expand, languageCodes }) => {
+        try {
+            const params = {};
+            if (deviceClasses?.length)
+                params.deviceClasses = deviceClasses.join(",");
+            if (expand)
+                params.expand = "true";
+            if (languageCodes?.length)
+                params.languageCodes = languageCodes.join(",");
+            const resp = await client.get(`/apps/${adamId}/product-pages/${productPageId}/locale-details`, params);
+            const data = resp.data;
+            const count = Array.isArray(data) ? data.length : data ? 1 : 0;
+            return {
+                content: [
+                    { type: "text", text: `Found ${count} locale detail record(s) for product page ${productPageId}.` },
+                    { type: "text", text: JSON.stringify(data, null, 2) },
+                ],
+            };
+        }
+        catch (err) {
+            return handleToolError(err);
+        }
+    });
     server.registerTool("list_product_pages", {
         title: "List Product Pages",
         description: "List all product pages for an app. Product pages are App Store page variations that can be used as creatives for custom product page ads. Shows which page is the default and each page's state (VISIBLE, etc.).",
@@ -146,6 +180,60 @@ After creation, use create_ad to attach the creative to an ad group. Each ad gro
                 content: [
                     { type: "text", text: `Found ${resp.data.length} product page(s) for app ${adamId}:\n${text}` },
                     { type: "text", text: JSON.stringify(resp.data, null, 2) },
+                ],
+            };
+        }
+        catch (err) {
+            return handleToolError(err);
+        }
+    });
+    server.registerTool("get_supported_countries_regions", {
+        title: "Get Supported Countries or Regions",
+        description: "Fetch supported product-page countries or regions and their supported/default locales. Optionally pass country/region codes such as US, GB, CA.",
+        inputSchema: {
+            countriesOrRegions: z.array(z.string()).optional().describe("Country/region codes to filter by, e.g. ['US', 'GB']"),
+        },
+        annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: true },
+    }, async ({ countriesOrRegions }) => {
+        try {
+            const params = countriesOrRegions?.length
+                ? { countriesOrRegions: countriesOrRegions.join(",") }
+                : undefined;
+            const resp = await client.get("/countries-or-regions", params);
+            const data = resp.data ?? resp;
+            const records = Array.isArray(data) ? data : data ? [data] : [];
+            const text = records
+                .map((record) => {
+                const code = record.countryOrRegion ?? "unknown";
+                const locales = record.supportedLanguages ?? record.supportedLocales ?? [];
+                return `${code}: ${locales.map((locale) => locale.languageCode ?? locale.language).filter(Boolean).join(", ")}`;
+            })
+                .join("\n");
+            return {
+                content: [
+                    { type: "text", text: `Found ${records.length} supported country/region record(s):\n${text}` },
+                    { type: "text", text: JSON.stringify(data, null, 2) },
+                ],
+            };
+        }
+        catch (err) {
+            return handleToolError(err);
+        }
+    });
+    server.registerTool("get_app_preview_device_sizes", {
+        title: "Get App Preview Device Sizes",
+        description: "Fetch Apple's supported app preview device-size mappings for creative assets.",
+        inputSchema: {},
+        annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: true },
+    }, async () => {
+        try {
+            const resp = await client.get("/creativeappmappings/devices");
+            const data = resp.data ?? resp;
+            const entries = Object.entries(data);
+            return {
+                content: [
+                    { type: "text", text: `Found ${entries.length} app preview device size mapping(s).` },
+                    { type: "text", text: JSON.stringify(data, null, 2) },
                 ],
             };
         }
