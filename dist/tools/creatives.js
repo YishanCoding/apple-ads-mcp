@@ -131,16 +131,24 @@ After creation, use create_ad to attach the creative to an ad group. Each ad gro
     });
     server.registerTool("get_product_page_locales", {
         title: "Get Product Page Locales",
-        description: "Fetch localized metadata for a product page by Adam ID and product page ID. Set expand=true to include locale-specific screenshots and app preview assets when Apple returns them.",
+        description: "Fetch localized metadata for a product page by Adam ID and product page ID. Filter by device class or language code, and set expand=true to include locale-specific screenshots and app preview assets when Apple returns them.",
         inputSchema: {
             adamId: z.number().describe("App Adam ID"),
             productPageId: z.string().describe("The product page ID"),
+            deviceClasses: z.array(z.enum(["IPAD", "IPHONE"])).optional().describe("Filter by device classes, e.g. ['IPHONE']"),
             expand: z.boolean().optional().describe("Include expanded locale asset metadata"),
+            languageCodes: z.array(z.string()).optional().describe("Filter by ISO 639-1 language codes, e.g. ['en-US', 'zh-Hans']"),
         },
         annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: true },
-    }, async ({ adamId, productPageId, expand }) => {
+    }, async ({ adamId, productPageId, deviceClasses, expand, languageCodes }) => {
         try {
-            const params = expand ? { expand: "true" } : undefined;
+            const params = {};
+            if (deviceClasses?.length)
+                params.deviceClasses = deviceClasses.join(",");
+            if (expand)
+                params.expand = "true";
+            if (languageCodes?.length)
+                params.languageCodes = languageCodes.join(",");
             const resp = await client.get(`/apps/${adamId}/product-pages/${productPageId}/locale-details`, params);
             const data = resp.data;
             const count = Array.isArray(data) ? data.length : data ? 1 : 0;
